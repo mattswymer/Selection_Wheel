@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Selection Wheel (Polished)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    /* --- Root Variables & Base Styles --- */
+    :root {
+      --bg: radial-gradient(1200px 800px at 20% 10%, #121624 0%, #0b0f1d 35%, #080a12 100%);
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text: #e9eefb;
+      --text-muted: #b9c2de;
+      --accent: #7ee7ff;
+      --danger: #ff6b83;
+      --shadow: 0 24px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* --- Layout & Structure --- */
+    .app-header { display: grid; place-items: center; padding: 16px clamp(16px, 3vw, 24px); text-align: center; }
+    .app-header h1 { font-size: clamp(18px, 2.6vw, 28px); margin: 0; font-weight: 800; letter-spacing: .4px; }
+
+    .app-container { max-width: 1200px; margin: 0 auto; padding: 8px clamp(12px, 3vw, 24px) 20px; }
+    .main-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media (min-width: 960px) {
+      .main-layout { grid-template-columns: minmax(520px, 1fr) 440px; align-items: start; }
+    }
+
+    /* --- Wheel Component --- */
+    .wheel-container {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      max-width: 760px;
+      width: 100%;
+      margin: 0 auto;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+      border-radius: 22px;
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--shadow);
+      display: grid;
+      place-items: center;
+      padding: 12px;
+      transition: max-width 0.4s ease;
+    }
+    .wheel-container.focus-mode { max-width: 980px; }
+    canvas#wheel, canvas#fx { position: absolute; top: 12px; left: 12px; right: 12px; bottom: 12px; width: calc(100% - 24px); height: calc(100% - 24px); }
+    canvas#wheel { filter: drop-shadow(0 24px 50px rgba(0, 0, 0, .5)); z-index: 1; }
+    canvas#fx { pointer-events: none; z-index: 2; }
+
+    .wheel-pointer {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 16px solid transparent;
+      border-right: 16px solid transparent;
+      border-top: 26px solid var(--accent);
+      filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .45));
+      z-index: 3;
+    }
+    .pointer-label {
+      position: absolute;
+      top: 38px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-weight: 800;
+      font-size: clamp(16px, 2.2vw, 20px);
+      color: #eaf8ff;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, .55);
+      pointer-events: none;
+      z-index: 3;
+    }
+    .spin-button {
+      position: relative; /* Changed from absolute for easier centering */
+      width: 22%;
+      aspect-ratio: 1 / 1;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      outline: none;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06) 60%);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .45), inset 0 0 0 2px rgba(255, 255, 255, 0.18), 0 0 0 10px rgba(126, 231, 255, 0.08);
+      color: var(--text);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      z-index: 4;
+      transition: transform 0.1s ease-out;
+    }
+    .spin-button .label { font-weight: 800; letter-spacing: 1px; font-size: clamp(14px, 2.2vw, 18px); }
+    .spin-button:active { transform: scale(0.985); }
+    .spin-button:disabled { opacity: .5; cursor: not-allowed; }
+    .spin-charge { position: absolute; inset: 8%; border-radius: 50%; background: conic-gradient(var(--accent) var(--p, 0%), rgba(255, 255, 255, .12) 0%); filter: blur(0.5px); /* Removed transition for JS control */ }
+    .spin-charge::after { content: ""; position: absolute; inset: 14%; border-radius: 50%; background: rgba(0, 0, 0, .55); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+
+    /* --- Control Panel --- */
+    .control-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; display: grid; gap: 12px; }
+    .control-panel h2 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: .12em; color: var(--text-muted); }
+    .input-group { display: grid; gap: 6px; }
+    textarea { width: 100%; min-height: 160px; resize: vertical; padding: 10px; border-radius: 12px; border: 1px solid var(--panel-border); color: var(--text); background: rgba(255, 255, 255, 0.06); font-family: inherit; font-size: 14px; }
+    .input-help { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); }
+    .input-help a { color: #9bd5ff; cursor: pointer; text-decoration: none; }
+    .input-help a:hover { text-decoration: underline; }
+
+    .controls-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .btn { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--panel-border); background: rgba(255, 255, 255, 0.06); color: var(--text); cursor: pointer; font-family: inherit; font-size: 13px; transition: background-color 0.2s; }
+    .btn:hover { background: rgba(255, 255, 255, 0.12); }
+    .btn.primary { background: linear-gradient(180deg, #7ee7ff, #6aa8ff); color: #0a0c15; font-weight: 800; border: none; }
+    .btn.danger { background: linear-gradient(180deg, #ff9aa9, #ff6b6b); color: #0a0c15; font-weight: 800; border: none; }
+
+    .settings-rows { display: grid; gap: 10px; }
+    .settings-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .settings-row .label { color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .14em; }
+    .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { padding: 6px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border); cursor: pointer; font-size: 12px; color: var(--text); }
+    .chip.active { background: linear-gradient(180deg, #7ee7ff, #6aa8ff); color: #0a0c15; border: none; font-weight: 800; }
+
+    .toggle-group { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+    .toggle-group label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    details.advanced-settings { border-top: 1px dashed rgba(255, 255, 255, 0.12); padding-top: 10px; }
+    details.advanced-settings summary { cursor: pointer; color: var(--text-muted); font-size: 12px; list-style: none; } /* Hide default marker */
+    details.advanced-settings summary::-webkit-details-marker { display: none; }
+
+    /* --- Results Display --- */
+    .results-area { display: grid; gap: 10px; margin-top: 6px; }
+    .result-card { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border); border-radius: 12px; padding: 12px; }
+    .result-card h3 { margin: 0 0 6px; font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .12em; display: flex; justify-content: space-between; align-items: center; }
+    .clear-link { color: #9bd5ff; font-size: 11px; cursor: pointer; background: none; border: none; padding: 0; font-family: inherit; }
+    #mostRecentValue { display: inline-block; font-weight: 800; font-size: 22px; letter-spacing: .3px; }
+    ul.previous-list { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; }
+    ul.previous-list li { font-size: 13px; color: var(--text); opacity: 0.92; }
+
+    /* --- Modal --- */
+    .modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-sheet { background: #121826; color: var(--text); width: min(720px, 92vw); border-radius: 14px; border: 1px solid var(--panel-border); box-shadow: var(--shadow); padding: 16px; transform: scale(0.95); transition: transform 0.3s ease; }
+    .modal-overlay.open .modal-sheet { transform: scale(1); }
+    .modal-sheet h3 { margin: 0 0 8px; font-size: 16px; }
+    .modal-sheet pre { background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border); padding: 10px; border-radius: 10px; overflow: auto; }
+    .modal-close-btn { float: right; cursor: pointer; color: #9bd5ff; background: none; border: none; font-size: 14px; }
+    
+    /* --- Donation Links --- */
+    .donation-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 12px;
+      justify-content: center;
+    }
+    .donation-links img {
+      height: 24px;
+      width: auto;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Selection Wheel</h1>
+  </header>
+
+  <main class="app-container">
+    <div class="main-layout">
+      <section class="wheel-container" id="wheelContainer">
+        <canvas id="wheel" width="800" height="800" aria-label="Spinning selection wheel"></canvas>
+        <canvas id="fx" width="800" height="800" aria-hidden="true"></canvas>
+        <div class="wheel-pointer" aria-hidden="true"></div>
+        <div class="pointer-label" id="pointerLabel"></div>
+        <button id="spinButton" class="spin-button" aria-label="Press and hold to charge, release to spin">
+          <div class="spin-charge" style="--p:0%"></div>
+          <span class="label">SPIN</span>
+        </button>
+      </section>
+
+      <aside class="control-panel">
+        <h2>Entries</h2>
+        <div class="input-group">
+          <textarea id="entriesInput" placeholder="Paste or type names… e.g. &#10;Last, First&#10;First Last&#10;Last[TAB]First&#10;Name; Name; Name"></textarea>
+          <div class="input-help">
+            <span>Paste a list. We auto-detect formats.</span>
+            <a id="openHelp" href="#">Input tips</a>
+          </div>
+          <div class="controls-grid">
+            <button id="applyBtn" class="btn primary">Apply</button>
+            <button id="shuffleBtn" class="btn" title="Shuffle order">Shuffle</button>
+            <button id="sortBtn" class="btn" title="Sort A→Z">A→Z</button>
+            <button id="resetBtn" class="btn" title="Restore original list">Reset</button>
+            <button id="undoBtn" class="btn" title="Undo removal">Undo</button>
+            <button id="clearBtn" class="btn danger">Clear</button>
+          </div>
+        </div>
+
+        <div class="settings-rows">
+          <div class="settings-row">
+            <span class="label">Spin Feel</span>
+            <div class="chip-group" id="feelChips">
+              <button class="chip" data-feel="calm">Calm</button>
+              <button class="chip active" data-feel="classic">Classic</button>
+              <button class="chip" data-feel="snappy">Snappy</button>
+            </div>
+          </div>
+          <div class="settings-row toggle-group">
+            <label><input type="checkbox" id="removeOnPick" checked /> No repeats</label>
+            <label><input type="checkbox" id="dedupeOnApply" checked /> Deduplicate</label>
+            <label><input type="checkbox" id="largeLabels" /> Large labels</label>
+          </div>
+          <details class="advanced-settings">
+            <summary>Advanced</summary>
+            <div class="settings-row toggle-group" style="margin-top:8px">
+              <label><input type="checkbox" id="focusMode" /> Focus mode</label>
+              <label><input type="checkbox" id="rotateLabels" checked /> Rotate labels</label>
+              <label><input type="checkbox" id="keepUpright" checked /> Keep upright</label>
+              <label><input type="checkbox" id="autoCap" checked /> Auto‑capitalize</label>
+              <label><input type="checkbox" id="stripIds" /> Strip IDs</label>
+            </div>
+          </details>
+        </div>
+
+        <div class="results-area">
+          <div class="result-card">
+            <h3>Most Recent Selection</h3>
+            <div><span id="mostRecentValue">—</span></div>
+          </div>
+          <div class="result-card">
+            <h3>Previous Selections <button id="clearPrevBtn" class="clear-link">Clear</button></h3>
+            <ul id="previousList" class="previous-list"></ul>
+          </div>
+        </div>
+        
+        <!-- Donation Links -->
+        <div class="donation-links">
+          <span>Like this app?</span>
+          <a href="https://www.paypal.me/mattswymer84" target="_blank" title="PayPal">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" onerror="this.onerror=null;this.src='https://placehold.co/24x24/ffffff/000000?text=P';" alt="PayPal" />
+          </a>
+          <a href="https://venmo.com/mattswymer" target="_blank" title="Venmo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" onerror="this.onerror=null;this.src='https://placehold.co/24x24/ffffff/000000?text=V';" alt="Venmo" />
+          </a>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Input Tips Modal -->
+  <div class="modal-overlay" id="tipsModal" aria-hidden="true" role="dialog" aria-labelledby="modalTitle">
+    <div class="modal-sheet" role="document">
+      <button class="modal-close-btn" id="closeTipsBtn" aria-label="Close modal">✕</button>
+      <h3 id="modalTitle">Input Tips</h3>
+      <p>Paste a roster in any of these common formats. We’ll auto‑detect and reformat to <b>First Last</b> with smart capitalization:</p>
+      <pre><code>Smith, John
+Doe, Jane
+
+Smith[TAB]John
+Doe[TAB]Jane
+
+John Smith; Jane Doe; Alvarez, Maria
+
+First Name,Last Name
+Last Name,First Name
+      </code></pre>
+      <p>We also accept lines with pipes <code>|</code> or semicolons <code>;</code>, remove duplicates (if enabled), and can strip numeric IDs in Advanced.</p>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    // --- Constants ---
+    const MAX_HOLD_DURATION = 1600; // ms
+    const SPIN_FEELS = {
+      calm:    { decay: 0.992, minV: 4.5, maxV: 10 },
+      classic: { decay: 0.985, minV: 5.5, maxV: 14 },
+      snappy:  { decay: 0.975, minV: 7,  maxV: 18 },
+    };
+    const LOCAL_STORAGE_KEY = 'selectionWheel:entries';
+
+    // --- DOM Element Cache ---
+    const dom = {
+      wheelCanvas: document.getElementById('wheel'),
+      fxCanvas: document.getElementById('fx'),
+      spinButton: document.getElementById('spinButton'),
+      chargeIndicator: document.querySelector('.spin-charge'),
+      entriesInput: document.getElementById('entriesInput'),
+      applyBtn: document.getElementById('applyBtn'),
+      shuffleBtn: document.getElementById('shuffleBtn'),
+      sortBtn: document.getElementById('sortBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      undoBtn: document.getElementById('undoBtn'),
+      pointerLabel: document.getElementById('pointerLabel'),
+      mostRecentValue: document.getElementById('mostRecentValue'),
+      previousList: document.getElementById('previousList'),
+      clearPrevBtn: document.getElementById('clearPrevBtn'),
+      tipsModal: document.getElementById('tipsModal'),
+      openHelpLink: document.getElementById('openHelp'),
+      closeTipsBtn: document.getElementById('closeTipsBtn'),
+      feelChips: document.getElementById('feelChips'),
+      wheelContainer: document.getElementById('wheelContainer'),
+      // Toggles
+      toggles: {
+        removeOnPick: document.getElementById('removeOnPick'),
+        dedupeOnApply: document.getElementById('dedupeOnApply'),
+        focusMode: document.getElementById('focusMode'),
+        rotateLabels: document.getElementById('rotateLabels'),
+        keepUpright: document.getElementById('keepUpright'),
+        largeLabels: document.getElementById('largeLabels'),
+        autoCap: document.getElementById('autoCap'),
+        stripIds: document.getElementById('stripIds'),
+      }
+    };
+
+    // --- Canvas & Rendering Contexts ---
+    const ctx = dom.wheelCanvas.getContext('2d');
+    const fxCtx = dom.fxCanvas.getContext('2d');
+    let pixelScale = 1;
+
+    // --- Application State ---
+    const state = {
+      entries: [],
+      originalEntries: [],
+      undoStack: [],
+      rotation: 0, // radians
+      angularVelocity: 0, // rad/s
+      isSpinning: false,
+      isAligning: false,
+      alignTarget: 0,
+      lastFrameTime: 0,
+      deferredRemoval: null, // { name, index }
+      spinFeel: SPIN_FEELS.classic,
+      isCharging: false,
+      chargeStartTime: 0,
+      confettiParticles: [],
+    };
+
+    /**
+     * Generates an array of evenly-spaced HSL colors.
+     * @param {number} count - The number of colors to generate.
+     * @returns {string[]} An array of HSL color strings.
+     */
+    const generatePalette = (count) => {
+      const colors = [];
+      const n = Math.max(1, count);
+      for (let i = 0; i < n; i++) {
+        const hue = Math.round((360 * i) / n);
+        colors.push(`hsl(${hue}deg 85% 65%)`);
+      }
+      return colors;
+    };
+
+    /**
+     * Sets the main list of entries, updates storage, and redraws the wheel.
+     * @param {string[]} list - The new array of entry names.
+     */
+    function setEntries(list) {
+      state.entries = list.map(s => s.trim()).filter(Boolean);
+      state.originalEntries = [...state.entries];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.entries));
+      } catch (e) {
+        console.error("Failed to save entries to localStorage:", e);
+      }
+      updateUIState();
+      drawWheel();
+    }
+    
+    /**
+     * Updates UI elements based on the current state (e.g., disabling buttons).
+     */
+    function updateUIState() {
+      dom.spinButton.disabled = state.entries.length === 0;
+      dom.undoBtn.disabled = state.undoStack.length === 0;
+    }
+
+    /**
+     * Parses raw text input into a clean list of names.
+     * @param {string} rawText - The raw string from the textarea.
+     * @returns {string[]} A processed array of names.
+     */
+    function normalizeRoster(rawText) {
+      if (!rawText) return [];
+      
+      const nameCase = (str) => {
+        if (!dom.toggles.autoCap.checked) return str.trim();
+        return str.trim().toLowerCase().split(/\s+/)
+          .map(part => part.split(/([-\'])/)
+            .map(seg => seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : seg)
+            .join(''))
+          .join(' ');
+      };
+
+      const tokens = rawText.replace(/\r\n?/g, '\n').split(/[\n\t;|]/).map(t => t.trim()).filter(Boolean);
+      
+      const namesOut = [];
+      for (let token of tokens) {
+        const low = token.toLowerCase();
+        if (["first", "last", "first name", "last name", "name", "student"].includes(low)) continue;
+
+        if (dom.toggles.stripIds.checked) {
+          token = token.replace(/\b\d+\b/g, '').replace(/\s{2,}/g, ' ').trim();
+        }
+
+        const commaMatch = /^\s*([^,]+),\s*([^,]+)\s*$/.exec(token);
+        if (commaMatch) {
+          const last = nameCase(commaMatch[1]);
+          const first = nameCase(commaMatch[2]);
+          namesOut.push(`${first} ${last}`.trim());
+        } else {
+          namesOut.push(nameCase(token.replace(/\s{2,}/g, ' ')));
+        }
+      }
+      return namesOut.filter(Boolean);
+    }
+
+    /**
+     * Applies the list from the textarea to the wheel.
+     */
+    function applyList() {
+      let list = normalizeRoster(dom.entriesInput.value);
+      if (dom.toggles.dedupeOnApply.checked) {
+        const seen = new Set();
+        list = list.filter(item => {
+          const key = item.toLowerCase();
+          return seen.has(key) ? false : seen.add(key);
+        });
+      }
+      setEntries(list);
+      state.undoStack.length = 0;
+      dom.mostRecentValue.textContent = '—';
+      dom.previousList.innerHTML = '';
+      state.deferredRemoval = null;
+      updateUIState();
+    }
+
+    // --- Drawing ---
+
+    /**
+     * Handles resizing of canvases for HiDPI displays.
+     */
+    function handleResize() {
+      const size = dom.wheelCanvas.clientWidth;
+      pixelScale = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+      [dom.wheelCanvas, dom.fxCanvas].forEach(c => {
+        c.width = size * pixelScale;
+        c.height = size * pixelScale;
+      });
+      ctx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
+      fxCtx.setTransform(pixelScale, 0, 0, pixelScale, 0, 0);
+      drawWheel();
+    }
+
+    /**
+     * Main drawing function for the wheel.
+     */
+    function drawWheel() {
+      const W = dom.wheelCanvas.width / pixelScale;
+      const H = dom.wheelCanvas.height / pixelScale;
+      const radius = Math.min(W, H) * 0.48;
+      const cx = W / 2;
+      const cy = H / 2;
+      
+      ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(state.rotation);
+
+      drawSlices(radius);
+      drawCenter(radius);
+      
+      ctx.restore(); // Restore from translate/rotate
+      
+      drawLabels(cx, cy, radius);
+      drawOutline(cx, cy, radius);
+    }
+    
+    function drawSlices(radius) {
+        const n = Math.max(1, state.entries.length);
+        const arc = (2 * Math.PI) / n;
+        const palette = generatePalette(n);
+
+        for (let i = 0; i < n; i++) {
+            const startAngle = i * arc;
+            const endAngle = startAngle + arc;
+            
+            // Slice Color
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, radius, startAngle, endAngle);
+            ctx.closePath();
+            ctx.fillStyle = palette[i % palette.length];
+            ctx.fill();
+
+            // Slice Border
+            ctx.save();
+            ctx.rotate(startAngle);
+            ctx.strokeStyle = 'rgba(0,0,0,.32)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(radius, 0);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+    
+    function drawCenter(radius) {
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.40)';
+      ctx.fill();
+    }
+
+    function drawLabels(cx, cy, radius) {
+        const n = state.entries.length;
+        if (n === 0) return;
+        
+        const arc = (2 * Math.PI) / n;
+        const fontScale = dom.toggles.largeLabels.checked ? 1.35 : 1.0;
+        const baseMaxFont = Math.max(11, Math.min(22, radius * 0.06 * fontScale));
+        const textRadius = radius * 0.6;
+
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 3;
+        ctx.fillStyle = '#FFFFFF';
+
+        for (let i = 0; i < n; i++) {
+            const angle = state.rotation + i * arc + arc / 2;
+            let text = state.entries[i];
+
+            // Truncate text if necessary
+            let font = baseMaxFont;
+            ctx.font = `800 ${font}px Inter`;
+            const maxW = (dom.toggles.rotateLabels.checked) ? (radius * 0.85 - textRadius) : (arc * textRadius * 0.8);
+            
+            while (ctx.measureText(text).width > maxW && font > 9) {
+                font--;
+                ctx.font = `800 ${font}px Inter`;
+            }
+            if (ctx.measureText(text).width > maxW) {
+                text = text.substring(0, 1) + '…';
+            }
+
+            ctx.save();
+            ctx.translate(cx, cy);
+
+            if (dom.toggles.rotateLabels.checked) {
+                let labelAngle = angle;
+                let textAlign = 'left';
+                let x = textRadius;
+                if (dom.toggles.keepUpright.checked && Math.cos(labelAngle) < 0) {
+                    labelAngle += Math.PI;
+                    textAlign = 'right';
+                    x = -textRadius;
+                }
+                ctx.rotate(labelAngle);
+                ctx.textAlign = textAlign;
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, x, 0);
+            } else {
+                const x = Math.cos(angle) * textRadius;
+                const y = Math.sin(angle) * textRadius;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, x, y);
+            }
+            ctx.restore();
+        }
+        ctx.shadowBlur = 0;
+    }
+
+    function drawOutline(cx, cy, radius) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = 'rgba(255,255,255,.30)';
+        ctx.stroke();
+    }
+
+    // --- Animation & Physics ---
+    
+    /**
+     * Main animation loop.
+     * @param {DOMHighResTimeStamp} timestamp - The current time.
+     */
+    function animationLoop(timestamp) {
+      if (!state.lastFrameTime) state.lastFrameTime = timestamp;
+      const deltaTime = Math.min(0.032, (timestamp - state.lastFrameTime) / 1000);
+      state.lastFrameTime = timestamp;
+
+      let needsRedraw = false;
+
+      if (state.isSpinning) {
+        state.rotation += state.angularVelocity * deltaTime;
+        state.angularVelocity *= state.spinFeel.decay;
+        
+        if (Math.abs(state.angularVelocity) < 0.05 && !state.isAligning) {
+            startAlignment();
+        }
+        needsRedraw = true;
+      }
+      
+      if (state.isAligning) {
+        const diff = (((state.alignTarget - state.rotation) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+        state.rotation += diff * Math.min(1, deltaTime * 10);
+        
+        if (Math.abs(diff) < 0.002) {
+            finishAlignment();
+        }
+        needsRedraw = true;
+      }
+
+      if (needsRedraw) drawWheel();
+      
+      const currentPointerIndex = getIndexAtPointer();
+      dom.pointerLabel.textContent = (currentPointerIndex >= 0) ? state.entries[currentPointerIndex] : '';
+
+      requestAnimationFrame(animationLoop);
+    }
+    
+    function startAlignment() {
+        const winningIndex = getIndexAtPointer();
+        const n = Math.max(1, state.entries.length);
+        const arc = (2 * Math.PI) / n;
+        const targetMidAngle = winningIndex * arc + arc / 2;
+        const pointerAngle = -Math.PI / 2;
+        
+        state.alignTarget = ((pointerAngle - targetMidAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        state.isAligning = true;
+        state.angularVelocity = 0;
+    }
+
+    function finishAlignment() {
+        state.rotation = state.alignTarget;
+        state.isAligning = false;
+        state.isSpinning = false;
+        onSpinFinished(getIndexAtPointer());
+    }
+
+    /**
+     * Gets the index of the entry currently under the pointer.
+     * @returns {number} The index of the entry, or -1 if none.
+     */
+    function getIndexAtPointer() {
+      if (state.entries.length === 0) return -1;
+      const n = state.entries.length;
+      const arc = (2 * Math.PI) / n;
+      const pointerAngle = -Math.PI / 2;
+      let normalizedAngle = (pointerAngle - state.rotation) % (2 * Math.PI);
+      if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
+      return Math.floor(normalizedAngle / arc);
+    }
+
+    /**
+     * Called when the wheel has finished spinning and aligned to a selection.
+     * @param {number} index - The index of the selected entry.
+     */
+    function onSpinFinished(index) {
+      if (index < 0 || index >= state.entries.length) return;
+      
+      burstConfetti(); // *** MOVED HERE ***
+
+      const picked = state.entries[index];
+      const previousWinner = dom.mostRecentValue.textContent.trim();
+      
+      if (previousWinner && previousWinner !== '—') {
+        const li = document.createElement('li');
+        li.textContent = previousWinner;
+        dom.previousList.prepend(li);
+      }
+      
+      dom.mostRecentValue.textContent = picked;
+      
+      if (dom.toggles.removeOnPick.checked) {
+        state.deferredRemoval = { name: picked, index: index };
+      }
+    }
+
+    /**
+     * Actually performs the removal of a picked entry after the next spin starts.
+     */
+    function executeDeferredRemoval() {
+      if (!state.deferredRemoval) return;
+      
+      const { name, index } = state.deferredRemoval;
+      let removalIndex = -1;
+
+      // The original index might be stale if the list was shuffled. Find the name.
+      if (state.entries[index] === name) {
+        removalIndex = index;
+      } else {
+        removalIndex = state.entries.indexOf(name);
+      }
+
+      if (removalIndex !== -1) {
+        state.entries.splice(removalIndex, 1);
+        state.undoStack.push({ name, index: removalIndex }); // Push the actual removal index
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.entries));
+        updateUIState();
+        drawWheel();
+      }
+      
+      state.deferredRemoval = null;
+    }
+
+    // --- Confetti FX ---
+    function burstConfetti() {
+      const W = dom.fxCanvas.width / pixelScale;
+      const H = dom.fxCanvas.height / pixelScale;
+      const cx = W / 2;
+      const cy = H * 0.16; // Burst from under the pointer
+      for (let i = 0; i < 90; i++) {
+        const angle = Math.random() * Math.PI + Math.PI; // Downward arc
+        const speed = 3 + Math.random() * 6;
+        state.confettiParticles.push({
+          x: cx,
+          y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          gravity: 9.8 * (0.06 + Math.random() * 0.14),
+          life: 60 + Math.random() * 60,
+          color: `hsl(${Math.random() * 360} 85% 65%)`,
+          size: 2 + Math.random() * 3,
+          rotation: Math.random() * Math.PI,
+        });
+      }
+    }
+    
+    function animateConfetti() {
+      const W = dom.fxCanvas.width / pixelScale;
+      const H = dom.fxCanvas.height / pixelScale;
+      fxCtx.clearRect(0, 0, W, H);
+      
+      for (let i = state.confettiParticles.length - 1; i >= 0; i--) {
+        const p = state.confettiParticles[i];
+        p.vy += p.gravity * 0.016; // Apply gravity
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 1;
+        p.rotation += 0.1;
+
+        if (p.life <= 0 || p.y > H + 20) {
+          state.confettiParticles.splice(i, 1);
+        } else {
+          fxCtx.save();
+          fxCtx.translate(p.x, p.y);
+          fxCtx.rotate(p.rotation);
+          fxCtx.fillStyle = p.color;
+          fxCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          fxCtx.restore();
+        }
+      }
+      requestAnimationFrame(animateConfetti);
+    }
+
+    // --- Spin Charging Logic ---
+    
+    /**
+     * Animation loop for the charge indicator.
+     */
+    function chargeAnimationLoop() {
+      if (!state.isCharging) return;
+
+      const heldDuration = performance.now() - state.chargeStartTime;
+      const chargePower = Math.min(1, heldDuration / MAX_HOLD_DURATION);
+      setChargeIndicator(chargePower);
+      
+      requestAnimationFrame(chargeAnimationLoop);
+    }
+
+    function setChargeIndicator(progress) {
+      const percentage = Math.round(Math.max(0, Math.min(100, progress * 100)));
+      dom.chargeIndicator.style.setProperty('--p', `${percentage}%`);
+    }
+
+    function startCharge() {
+      if (state.isSpinning || state.isAligning || state.entries.length === 0) return;
+      state.isCharging = true;
+      state.chargeStartTime = performance.now();
+      setChargeIndicator(0);
+      requestAnimationFrame(chargeAnimationLoop); // Start the animation
+    }
+
+    function endCharge() {
+      if (!state.isCharging) return;
+      state.isCharging = false;
+      
+      if (dom.toggles.removeOnPick.checked) {
+        executeDeferredRemoval();
+      }
+      
+      const heldDuration = performance.now() - state.chargeStartTime;
+      const chargePower = Math.min(1, heldDuration / MAX_HOLD_DURATION);
+      setChargeIndicator(0);
+      
+      const { minV, maxV } = state.spinFeel;
+      // Use an easing function for a better feel
+      const easedPower = 1 - Math.pow(1 - chargePower, 3); 
+      state.angularVelocity = (minV + (maxV - minV) * easedPower) * (Math.random() > 0.5 ? 1 : -1);
+      state.isSpinning = true;
+      // burstConfetti(); // *** REMOVED FROM HERE ***
+    }
+
+    // --- Event Listeners ---
+    function setupEventListeners() {
+      window.addEventListener('resize', handleResize);
+
+      // Main Controls
+      dom.applyBtn.addEventListener('click', applyList);
+      dom.shuffleBtn.addEventListener('click', () => {
+        for (let i = state.entries.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [state.entries[i], state.entries[j]] = [state.entries[j], state.entries[i]];
+        }
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.entries));
+        drawWheel();
+      });
+      dom.sortBtn.addEventListener('click', () => {
+        state.entries.sort((a, b) => a.localeCompare(b));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.entries));
+        drawWheel();
+      });
+      dom.resetBtn.addEventListener('click', () => {
+        setEntries([...state.originalEntries]);
+        state.deferredRemoval = null;
+      });
+      dom.clearBtn.addEventListener('click', () => {
+        setEntries([]);
+        dom.entriesInput.value = '';
+        dom.mostRecentValue.textContent = '—';
+        dom.previousList.innerHTML = '';
+        state.deferredRemoval = null;
+      });
+      dom.undoBtn.addEventListener('click', () => {
+        const last = state.undoStack.pop();
+        if (!last) return;
+        state.entries.splice(Math.min(last.index, state.entries.length), 0, last.name);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.entries));
+        updateUIState();
+        drawWheel();
+      });
+
+      // Results
+      dom.clearPrevBtn.addEventListener('click', () => { dom.previousList.innerHTML = ''; });
+
+      // Modal
+      dom.openHelpLink.addEventListener('click', (e) => { e.preventDefault(); dom.tipsModal.classList.add('open'); dom.tipsModal.setAttribute('aria-hidden', 'false'); });
+      dom.closeTipsBtn.addEventListener('click', () => { dom.tipsModal.classList.remove('open'); dom.tipsModal.setAttribute('aria-hidden', 'true'); });
+      dom.tipsModal.addEventListener('click', e => { if (e.target === dom.tipsModal) dom.tipsModal.classList.remove('open'); });
+
+      // Settings
+      dom.toggles.focusMode.addEventListener('change', () => { dom.wheelContainer.classList.toggle('focus-mode', dom.toggles.focusMode.checked); handleResize(); });
+      dom.feelChips.addEventListener('click', (e) => {
+        const btn = e.target.closest('.chip');
+        if (!btn) return;
+        dom.feelChips.querySelectorAll('.chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.spinFeel = SPIN_FEELS[btn.dataset.feel] || SPIN_FEELS.classic;
+      });
+      
+      // Re-draw on label settings change
+      ['rotateLabels', 'keepUpright', 'largeLabels'].forEach(id => {
+        dom.toggles[id].addEventListener('change', drawWheel);
+      });
+
+      // Spin Button
+      dom.spinButton.addEventListener('pointerdown', e => { e.preventDefault(); startCharge(); });
+      window.addEventListener('pointerup', endCharge);
+      window.addEventListener('pointercancel', endCharge); // Handle cases like losing focus
+    }
+
+    /**
+     * Initializes the application.
+     */
+    function init() {
+      let savedEntries;
+      try {
+        savedEntries = localStorage.getItem(LOCAL_STORAGE_KEY);
+      } catch (e) {
+        console.warn("Could not access localStorage. Settings will not be saved.");
+      }
+
+      if (savedEntries) {
+        setEntries(JSON.parse(savedEntries));
+        dom.entriesInput.value = state.entries.join('\n');
+      } else {
+        const defaultEntries = ['Ava', 'Ethan', 'Mia', 'Noah', 'Olivia', 'Liam', 'Emma', 'Jackson', 'Sophia', 'Lucas', 'Amelia', 'Aiden'];
+        setEntries(defaultEntries);
+        dom.entriesInput.value = defaultEntries.join('\n');
+      }
+      
+      setupEventListeners();
+      handleResize();
+      requestAnimationFrame(animationLoop);
+      requestAnimationFrame(animateConfetti);
+      updateUIState();
+    }
+
+    // --- Start Application ---
+    init();
+
+  })();
+  </script>
+</body>
+</html>
